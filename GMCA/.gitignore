@@ -1,0 +1,9 @@
+﻿*.npy
+*.pth
+*.pyc
+__pycache__/
+run/
+processed/
+uniteModels/
+.idea/
+Dataset/
