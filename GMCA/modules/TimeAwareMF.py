@@ -67,7 +67,9 @@ class TimeAwareMF(object):
         L = np.random.rand(N, K)
 
         C = [Ct.tocoo() for Ct in C]
-        """fix:将 zip 转为 list："""
+        """fix:将 zip 转为 list：Python 3 中 zip() 返回的是迭代器（iterator），不是列表。
+        第一次遍历后迭代器就被消耗完了，后续所有迭代中 for i, j in entry_index[t] 都是空循环！
+        所以 C_est 从未被更新，error 永远是初始的 0.0。"""
         entry_index = [list(zip(C[t].row, C[t].col)) for t in range(T)]
 
         C_est = [Ct for Ct in C]
