@@ -52,8 +52,17 @@ class Center(object):
             for _ in range(int(loc.freq)):
                 coo_seq.append(np.array([loc.lat, loc.lng]))
         coo_seq = np.array(coo_seq)
-        self.mu = np.mean(coo_seq, axis=0)
-        self.cov = np.cov(coo_seq.T)
+        """add:"""
+        if len(coo_seq) < 2:
+            self.mu = np.mean(coo_seq, axis=0)
+            self.cov = np.array([[0.01, 0.0], [0.0, 0.01]])
+        else:
+            self.mu = np.mean(coo_seq, axis=0)
+            self.cov = np.cov(coo_seq.T)
+            if np.any(np.isnan(self.cov)) or np.any(np.isinf(self.cov)):
+                self.cov = np.array([[0.01, 0.0], [0.0, 0.01]])
+
+
         self.distribution = multivariate_normal(self.mu, self.cov, allow_singular=True)
         self.lat = self.mu[0]
         self.lng = self.mu[1]
@@ -103,6 +112,44 @@ class MultiGaussianModel(object):
                 center_list[uid][cid].build_gaussian()
         self.center_list = center_list
 
+    """add:LLM"""
+    def load_centers_from_llm(self, sparse_check_in_matrix, poi_coos, llm_user_centers):
+        self.poi_coos = poi_coos
+        L = defaultdict(list)
+        for (uid, lid), freq in sparse_check_in_matrix.items():
+            lat, lng = self.poi_coos[lid]
+            L[uid].append(Location(lid, lat, lng, freq))
+
+        center_list = {}
+        llm_ok, fallback = 0, 0
+        for uid in range(len(L)):
+            uid_str = str(uid)
+            if uid_str in llm_user_centers and llm_user_centers[uid_str]:
+                centers_u = []
+                for cid, lc in enumerate(llm_user_centers[uid_str]):
+                    clat, clng = lc["lat"], lc["lng"]
+                    center = Center()
+                    for loc in L[uid]:
+                        if dist(loc, _FakeLoc(clat, clng)) <= self.dmax:
+                            loc.center = cid + 1
+                            center.add(loc)
+                    if center.total_freq >= 2:
+                        center.lat = clat
+                        center.lng = clng
+                        centers_u.append(center)
+                if centers_u:
+                    center_list[uid] = centers_u
+                    llm_ok += 1
+                    continue
+            center_list[uid] = self.discover_user_centers(L[uid])
+            fallback += 1
+
+        for uid in center_list:
+            for c in center_list[uid]:
+                c.build_gaussian()
+        self.center_list = center_list
+        print(f"  LLM中心: 成功{llm_ok}, 回退{fallback}")
+
     def predict(self, uid, lid):
         lat, lng = self.poi_coos[lid]
         l = Location(None, lat, lng, None)
@@ -119,3 +166,8 @@ class MultiGaussianModel(object):
                         cu.pdf(l) / all_center_pdf)
         return prob
 
+"""add:LLM"""
+class _FakeLoc:
+    def __init__(self, lat, lng):
+        self.lat = lat
+        self.lng = lng

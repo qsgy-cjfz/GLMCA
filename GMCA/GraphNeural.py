@@ -7,9 +7,10 @@
 from tools import *
 import pickle
 
-
+"""保存最优模型"""
 def train():
     f = open(result_path + args.dataset + "-graph_run.log", 'a')
+    best_ndcg = 0.0
     for epoch in range(args.num_epoch):
         start_time = time.time()
         gcn.train()
@@ -47,10 +48,59 @@ def train():
                 format_print("第{}轮metrics计算完成：用时{}s".format(epoch+1,time.time() - start_time)," ",6)
                 print(metrics)
                 f.write(metrics+"\n")
+                if perf_info[5] > best_ndcg:
+                    best_ndcg = perf_info[5]
+                    graph_model_path = temp_path + args.dataset + "-graph_model_best.pth"
+                    torch.save((user_embed, item_embed), graph_model_path)
+                    print("最优图模型保存(ndcg@10={:.6f})".format(best_ndcg))
                 graph_model_path = temp_path + args.dataset + "-graph_model.pth"
                 torch.save((user_embed, item_embed), graph_model_path)
                 print("图模型保存")
     f.close()
+
+# def train():
+#     f = open(result_path + args.dataset + "-graph_run.log", 'a')
+#     for epoch in range(args.num_epoch):
+#         start_time = time.time()
+#         gcn.train()
+#         all_loss, all_mf_loss, all_reg_loss = 0.0, 0.0, 0.0
+#         for data in loader:
+#             users = data[0].type(torch.long).to(device)
+#             pItems = data[1].type(torch.long).to(device),
+#             nItems = data[2].type(torch.long).to(device)
+#             user_embed, item_embed = gcn.propagate()
+#             user_embed, pItem_embed, nItem_embed = user_embed[users], item_embed[pItems], item_embed[nItems]
+#             loss, mf_loss, reg_loss = gcn.calculate_loss(user_embed, pItem_embed, nItem_embed)
+#             optimizer.zero_grad()
+#             loss.backward()
+#             optimizer.step()
+#             all_loss += loss.item()
+#             all_mf_loss += mf_loss.item()
+#             all_reg_loss += reg_loss.item()
+#         mean_loss, mean_mf_loss, mean_reg_loss = all_loss / len(loader), all_mf_loss / len(loader), all_reg_loss / len(
+#             loader)
+#         one_epoch_time = time.time() - start_time
+#         loss_str = "epoch:{},loss:[{}]=mf:[{}]+reg:[{}],用时{}s".format(epoch + 1, mean_loss, mean_mf_loss, mean_reg_loss,
+#                                                                       one_epoch_time)
+#         print(loss_str + "\n")
+#         f.write(loss_str)
+#         if (epoch) % 100 == 0:
+#             gcn.eval()
+#             # 测试
+#             with torch.no_grad():
+#                 user_embed, item_embed = gcn.propagate()
+#                 user_embed, item_embed = user_embed.cpu().detach().numpy(), item_embed.cpu().detach().numpy()
+#                 start_time = time.time()
+#                 perf_info = evaluate(user_embed, item_embed,train_U2I, test_U2I, args)
+#                 metrics = "pre@5={},rec@5={},ndcg@5={},pre@10={},rec@10={},ndcg@10={}," \
+#                 "pre@15={},rec@15={},ndcg@15={},pre@20={},rec@20={},ndcg@20={}".format(*perf_info)
+#                 format_print("第{}轮metrics计算完成：用时{}s".format(epoch+1,time.time() - start_time)," ",6)
+#                 print(metrics)
+#                 f.write(metrics+"\n")
+#                 graph_model_path = temp_path + args.dataset + "-graph_model.pth"
+#                 torch.save((user_embed, item_embed), graph_model_path)
+#                 print("图模型保存")
+#     f.close()
 
 
 def predict():

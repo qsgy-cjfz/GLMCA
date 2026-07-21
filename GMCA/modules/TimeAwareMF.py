@@ -108,30 +108,30 @@ class TimeAwareMF(object):
                 last_error = error
             iters += 1
         """fix-07:注释掉多余循环"""
-        # for iters in range(max_iters):
-        #     for t in range(T):
-        #         C_est[t] = C_est[t].todok()
-        #         for i, j in entry_index[t]:
-        #             C_est[t][i, j] = U[t][i].dot(L[j])
-        #         C_est[t] = C_est[t].tocsr()
-        #
-        #     for t in range(T):
-        #         t_1 = (t - 1) if not t == 0 else (self.T - 1)
-        #         numerator = C[t] * L + Lambda * sigma[t] * U[t_1]
-        #         denominator = np.maximum(1e-6, C_est[t] * L + Lambda * sigma[t] * U[t_1] + alpha * U[t_1])
-        #         U[t] *= np.sqrt(1.0 * numerator / denominator)
-        #
-        #     numerator = np.sum([C[t].T * U[t] for t in range(T)], axis=0)
-        #     denominator = np.maximum(1e-6, np.sum([C_est[t].T * U[t]], axis=0) + beta * L)
-        #     L *= np.sqrt(1.0 * numerator / denominator)
-        #
-        #     error = 0.0
-        #     for t in range(T):
-        #         C_est_dok = C_est[t].todok()
-        #         C_dok = C[t].todok()
-        #         for i, j in entry_index[t]:
-        #             error += (C_est_dok[i, j] - C_dok[i, j]) * (C_est_dok[i, j] - C_dok[i, j])
-        #     print('Iteration:', iters, error)
+        for iters in range(max_iters):
+            for t in range(T):
+                C_est[t] = C_est[t].todok()
+                for i, j in entry_index[t]:
+                    C_est[t][i, j] = U[t][i].dot(L[j])
+                C_est[t] = C_est[t].tocsr()
+
+            for t in range(T):
+                t_1 = (t - 1) if not t == 0 else (self.T - 1)
+                numerator = C[t] * L + Lambda * sigma[t] * U[t_1]
+                denominator = np.maximum(1e-6, C_est[t] * L + Lambda * sigma[t] * U[t_1] + alpha * U[t_1])
+                U[t] *= np.sqrt(1.0 * numerator / denominator)
+
+            numerator = np.sum([C[t].T * U[t] for t in range(T)], axis=0)
+            denominator = np.maximum(1e-6, np.sum([C_est[t].T * U[t]], axis=0) + beta * L)
+            L *= np.sqrt(1.0 * numerator / denominator)
+
+            error = 0.0
+            for t in range(T):
+                C_est_dok = C_est[t].todok()
+                C_dok = C[t].todok()
+                for i, j in entry_index[t]:
+                    error += (C_est_dok[i, j] - C_dok[i, j]) * (C_est_dok[i, j] - C_dok[i, j])
+            print('Iteration:', iters, error)
         self.U, self.L = U, L
 
     def predict(self, i, j):

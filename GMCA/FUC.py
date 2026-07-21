@@ -6,9 +6,10 @@
 """
 import pickle
 import time
+import json
+import os
 
 from tools import *
-
 
 def train():
     PFM.train(sparse_training_matrix, max_iters=args.pfm_iters, learning_rate=1e-4,find_max_iters=args.find_pfm_iters)
@@ -17,9 +18,24 @@ def train():
     ctime = time.time()
     # MGMWT.multi_center_discovering(sparse_training_matrix_WT, poi_coos)  # 工作日的多活动中心
     # MGMLT.multi_center_discovering(sparse_training_matrix_LT, poi_coos)  # 周末的多活动中心
-    for key in MGMWK.keys():
+    """for key in MGMWK.keys():
         MGMWK[key].multi_center_discovering(training_data_workday[key], poi_coos)  # 工作日的多活动中心
-        MGMED[key].multi_center_discovering(training_data_weekend[key], poi_coos)  # 周末的多活动中心
+        MGMED[key].multi_center_discovering(training_data_weekend[key], poi_coos)  # 周末的多活动中心"""
+
+    llm_coord_file = f"processed/activity_centers/{data_name}_llm_coordinate_centers.json"
+    if os.path.exists(llm_coord_file):
+        with open(llm_coord_file, 'r', encoding='utf-8') as f:
+            llm_coord_data = json.load(f)
+        format_print(f"使用LLM活动中心坐标 ({llm_coord_data['total_users']}个用户)")
+        for key in MGMWK.keys():
+            MGMWK[key].load_centers_from_llm(training_data_workday[key], poi_coos, llm_coord_data["user_centers"])
+            MGMED[key].load_centers_from_llm(training_data_weekend[key], poi_coos, llm_coord_data["user_centers"])
+    else:
+        format_print("未找到LLM坐标文件，使用原始距离聚类")
+        for key in MGMWK.keys():
+            MGMWK[key].multi_center_discovering(training_data_workday[key], poi_coos)
+            MGMED[key].multi_center_discovering(training_data_weekend[key], poi_coos)
+
     print("多活动中心加载完毕，用时" + str(time.time() - ctime) + "s")
     TAMF.train(sparse_training_matrices, temp_path, max_iters=args.tamf_iters, load_sigma=False,find_max_iters=args.find_tamf_iters)
     TAMF.save_model(temp_path)
@@ -30,50 +46,20 @@ def train():
 
 """fix-04:(cnt,uid)->params"""
 """单用户预测"""
-# def cal_metrics(params):
-#     cnt, uid = params
-#     metrics = "pre@5={},rec@5={},ndcg@5={},pre@10={},rec@10={},ndcg@10={}," \
-#               "pre@15={},rec@15={},ndcg@15={},pre@20={},rec@20={},ndcg@20={}"
-#     overall_scores = [PFM.predict(uid, lid) *
-#                       ((MGMWK['day'].predict(uid, lid) + MGMWK['night'].predict(uid, lid)) +
-#                        (MGMED['day'].predict(uid, lid) + MGMED['night'].predict(uid, lid))) *
-#                       TAMF.predict(uid, lid) * LFBCA.predict(uid, lid) if (uid, lid) not in training_tuples else -1 for
-#                       lid in all_lids]
-#     # overall_scores = [PFM.predict(uid, lid) * (MGMWT.predict(uid, lid) + MGMLT.predict(uid, lid))
-#     #                   * TAMF.predict(uid, lid) * LFBCA.predict(uid, lid)
-#     #                   if (uid, lid) not in training_tuples else -1
-#     #                   for lid in all_lids]
-#     overall_scores = np.array(overall_scores)
-#     predict_topk = list(reversed(overall_scores.argsort()))[:top_k]
-#     actual = ground_truth[uid]
-#     result = get_metrics(actual, predict_topk)
-#     metrics = metrics.format(*result)
-#     print(cnt, uid, metrics)
-#     with open(result_path + "/FUC_result.txt", 'a') as f:
-#         str_reslut = '\t'.join(str(i) for i in result.tolist())
-#         f.write(str_reslut + '\n')
-#     return result.tolist()
-"""单用户预测（向量化版本）"""
 def cal_metrics(params):
     cnt, uid = params
     metrics = "pre@5={},rec@5={},ndcg@5={},pre@10={},rec@10={},ndcg@10={}," \
               "pre@15={},rec@15={},ndcg@15={},pre@20={},rec@20={},ndcg@20={}"
-
-    pfm_all = PFM.U[uid].dot(PFM.L.T)
-    tamf_all = np.zeros(len(all_lids))
-    for t in range(TAMF.T):
-        tamf_all += TAMF.U[t][uid].dot(TAMF.L.T)
-    lfbc_all = LFBCA.rec_score[uid]
-
-    overall_scores = np.empty(len(all_lids))
-    for idx, lid in enumerate(all_lids):
-        if (uid, lid) in training_tuples:
-            overall_scores[idx] = -1
-        else:
-            mgm_val = ((MGMWK['day'].predict(uid, lid) + MGMWK['night'].predict(uid, lid)) +
-                       (MGMED['day'].predict(uid, lid) + MGMED['night'].predict(uid, lid)))
-            overall_scores[idx] = pfm_all[lid] * mgm_val * tamf_all[lid] * lfbc_all[lid]
-
+    overall_scores = [PFM.predict(uid, lid) *
+                      ((MGMWK['day'].predict(uid, lid) + MGMWK['night'].predict(uid, lid)) +
+                       (MGMED['day'].predict(uid, lid) + MGMED['night'].predict(uid, lid))) *
+                      TAMF.predict(uid, lid) * LFBCA.predict(uid, lid) if (uid, lid) not in training_tuples else -1 for
+                      lid in all_lids]
+    # overall_scores = [PFM.predict(uid, lid) * (MGMWT.predict(uid, lid) + MGMLT.predict(uid, lid))
+    #                   * TAMF.predict(uid, lid) * LFBCA.predict(uid, lid)
+    #                   if (uid, lid) not in training_tuples else -1
+    #                   for lid in all_lids]
+    overall_scores = np.array(overall_scores)
     predict_topk = list(reversed(overall_scores.argsort()))[:top_k]
     actual = ground_truth[uid]
     result = get_metrics(actual, predict_topk)
@@ -143,6 +129,7 @@ if __name__ == '__main__':
         MGMED[key] = MultiGaussianModel(alpha=0.2, theta=0.02, dmax=args.ed_dmax)
     TAMF = TimeAwareMF(K=100, Lambda=1.0, beta=2.0, alpha=2.0, T=24)
     LFBCA = LocationFriendshipBookmarkColoringAlgorithm(alpha=0.85, beta=float(args.beta), epsilon=0.001)
+
     """
     4.模块训练
     """
